@@ -1,6 +1,11 @@
 <template>
   <div class="min-h-screen bg-gray-50" :class="{ 'dark': isDarkMode }">
-    <AppHeader @toggle-theme="toggleTheme" :isDarkMode="isDarkMode" />
+    <AppHeader 
+      @toggle-theme="toggleTheme" 
+      :isDarkMode="isDarkMode" 
+      @wallet-connected="onWalletConnected"
+      @wallet-disconnected="onWalletDisconnected"
+    />
     
     <main class="pt-16">
       <div class="container mx-auto px-4 py-8">
@@ -42,6 +47,7 @@ const isDarkMode = ref(false);
 const selectedAudio = ref<Audio | undefined>(undefined);
 const audioList = ref<Audio[]>([]);
 const currentIndex = ref(-1);
+const walletAddress = ref('');
 
 const toggleTheme = (): void => {
   isDarkMode.value = !isDarkMode.value;
@@ -52,7 +58,7 @@ const playAudio = (audio: Audio): void => {
   
   // Обновить текущий индекс
   currentIndex.value = audioList.value.findIndex(
-    a => a.title === audio.title && a.src === audio.src
+    a => a.title === audio.title && a.link === audio.link
   );
 };
 
@@ -74,5 +80,15 @@ const addNewAudio = (audio: Audio): void => {
   // Автоматически выбираем новый трек для воспроизведения
   selectedAudio.value = audio;
   currentIndex.value = 0;
+};
+
+const onWalletConnected = (address: string): void => {
+  walletAddress.value = address;
+  console.log('Кошелек подключен:', address);
+};
+
+const onWalletDisconnected = (): void => {
+  walletAddress.value = '';
+  console.log('Кошелек отключен');
 };
 </script>

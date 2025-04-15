@@ -13,7 +13,13 @@ import {
   faForwardStep, 
   faArrowRightArrowLeft,
   faUpload,
-  faXmark
+  faXmark,
+  // Новые иконки для работы с кошельком
+  faUser,
+  faWallet,
+  faArrowRight,
+  faCheck,
+  faArrowLeft
 } from '@fortawesome/free-solid-svg-icons';
 
 // Иконки из regular набора
@@ -36,6 +42,12 @@ library.add(
   faArrowRightArrowLeft,
   faUpload,
   faXmark,
+  // Новые иконки
+  faUser,
+  faWallet,
+  faArrowRight,
+  faCheck,
+  faArrowLeft,
   
   // Regular
   faMoon, 
