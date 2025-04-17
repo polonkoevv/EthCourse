@@ -1,16 +1,16 @@
 <template>
-    <div class="bg-white rounded-2xl p-6 shadow-sm">
-      <div class="flex items-center space-x-4 mb-6">
-        <div class="w-24 h-24 bg-gradient-to-br from-blue-400 to-cyan-300 rounded-lg flex items-center justify-center">
+    <div class="bg-white rounded-2xl p-6 shadow-sm flex flex-col items-center justify-center">
+      <div class="flex flex-col items-center text-center mb-6 w-full">
+        <div class="w-24 h-24 bg-gradient-to-br from-blue-400 to-cyan-300 rounded-lg flex items-center justify-center mb-3">
           <font-awesome-icon icon="music" class="text-3xl text-white" />
         </div>
         <div>
-          <h3 class="text-xl font-bold">Currently Playing</h3>
+          <h3 class="text-xl font-bold">Воспроизводится</h3>
           <p class="text-gray-600">{{ currentTrack.name }}</p>
-          <p class="text-sm text-gray-500">{{ currentTrack.artist }}</p>
+          <p class="text-sm text-gray-500">{{ currentTrack.owner_addr }}</p>
         </div>
       </div>
-      <div class="space-y-4">
+      <div class="space-y-4 w-full max-w-md">
         <div 
           class="h-2 bg-gray-200 rounded-full relative cursor-pointer" 
           ref="progressBarRef"
@@ -39,7 +39,7 @@
           <span>{{ formatTime(currentTime) }}</span>
           <span>{{ formatTime(duration) }}</span>
         </div>
-        <div class="flex items-center justify-center space-x-6">
+        <div class="flex items-center justify-center space-x-8 mt-4">
           <button 
             class="text-gray-600 hover:text-blue-600 text-xl" 
             @click="playPrevious"
@@ -49,7 +49,7 @@
             <font-awesome-icon icon="backward-step" />
           </button>
           <button 
-            class="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white hover:bg-blue-700"
+            class="w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center text-white hover:bg-blue-700 text-xl"
             @click="togglePlay"
           >
             <font-awesome-icon :icon="isPlaying ? 'pause' : 'play'" />
@@ -79,7 +79,7 @@
   import type { Track, Audio } from '../../types/audio';
   
   const props = defineProps<{
-    selectedAudio?: Audio
+    selectedAudio: Audio
     audioList: Audio[]
   }>();
   
@@ -99,7 +99,8 @@
   const currentTrack = ref<Track>({
     name: 'Выберите трек',
     artist: 'Нет исполнителя',
-    link: ''
+    link: '',
+    owner_addr: ''
   });
   
   const progressPercentage = computed(() => {
@@ -201,13 +202,14 @@
   watch(() => props.selectedAudio, (newAudio) => {
     if (newAudio) {
       currentIndex.value = props.audioList.findIndex(
-        audio => audio.title === newAudio.title && audio.link === newAudio.link
+        audio => audio.title === newAudio.title && audio.link === newAudio.link && audio.owner_addr === newAudio.owner_addr
       );
       
       currentTrack.value = {
         name: newAudio.title,
-        artist: 'Неизвестный исполнитель',
-        link: newAudio.link
+        owner_addr: newAudio.owner_addr,
+        link: newAudio.link,
+        artist: newAudio.owner_addr
       };
       
       if (audioElement.value) {
@@ -268,7 +270,8 @@
       currentTrack.value = {
         name: props.selectedAudio.title,
         artist:'Неизвестный исполнитель',
-        link: props.selectedAudio.link
+        link: props.selectedAudio.link,
+        owner_addr: props.selectedAudio.owner_addr
       };
       
       currentIndex.value = props.audioList.findIndex(

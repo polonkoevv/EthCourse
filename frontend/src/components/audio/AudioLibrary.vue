@@ -1,6 +1,6 @@
 <template>
     <section class="mt-8 bg-white rounded-2xl p-6 shadow-sm">
-      <h2 class="text-xl font-bold mb-6">Ваша библиотека</h2>
+      <h2 class="text-xl font-bold mb-6">Библиотека</h2>
       <div v-if="audioFiles.length === 0" class="text-center py-8 text-gray-500">
         Библиотека пуста. Загрузите свой первый трек, нажав на кнопку "Загрузить аудио" выше.
       </div>

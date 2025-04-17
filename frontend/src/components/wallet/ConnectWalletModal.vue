@@ -204,6 +204,26 @@ const fetchAvailableAccounts = async (): Promise<void> => {
   }
 };
 
+// Сохранение данных кошелька в localStorage
+const saveWalletToStorage = (address: string, balance: string, provider: 'metamask' | '') => {
+  localStorage.setItem('wallet', JSON.stringify({
+    address,
+    balance,
+    provider
+  }));
+};
+
+// Загрузка данных кошелька из localStorage
+const loadWalletFromStorage = (): { address: string; balance: string; provider: 'metamask' | '' } | null => {
+  const wallet = localStorage.getItem('wallet');
+  return wallet ? JSON.parse(wallet) : null;
+};
+
+// Удаление данных кошелька из localStorage
+const removeWalletFromStorage = () => {
+  localStorage.removeItem('wallet');
+};
+
 // Выбор провайдера кошелька
 const selectProvider = async (provider: 'metamask') => {
   selectedProvider.value = provider;
@@ -237,13 +257,10 @@ const selectAccount = (address: string) => {
   selectedAccountAddress.value = address;
 };
 
-// Подключение выбранного аккаунта
 const connectSelectedAccount = async () => {
   if (!selectedAccountAddress.value) return;
   
   try {
-    // Запрашиваем переключение на выбранный аккаунт
-    // @ts-ignore
     await window.ethereum.request({
       method: 'wallet_requestPermissions',
       params: [{ eth_accounts: { accounts: [selectedAccountAddress.value] } }]
@@ -254,11 +271,11 @@ const connectSelectedAccount = async () => {
       account => account.address === selectedAccountAddress.value
     )?.balance || '0';
     
+    saveWalletToStorage(walletAddress.value, walletBalance.value, selectedProvider.value);
+    
     step.value = 'connected';
     emit('wallet-connected', selectedAccountAddress.value);
     
-    // Подписка на изменение аккаунтов
-    // @ts-ignore
     window.ethereum.on('accountsChanged', handleAccountsChanged);
   } catch (err: any) {
     console.error('Ошибка при подключении аккаунта:', err);
@@ -276,6 +293,9 @@ const handleAccountsChanged = async (accounts: string[]) => {
     walletAddress.value = accounts[0];
     walletBalance.value = await getAccountBalance(accounts[0]);
     
+    // Сохраняем обновленные данные в localStorage
+    saveWalletToStorage(walletAddress.value, walletBalance.value, selectedProvider.value);
+    
     // Обновляем список доступных аккаунтов
     await fetchAvailableAccounts();
     
@@ -292,6 +312,10 @@ const disconnectWallet = () => {
   walletAddress.value = '';
   walletBalance.value = '0';
   selectedAccountAddress.value = '';
+  
+  // Удаляем данные из localStorage
+  removeWalletFromStorage();
+  
   emit('wallet-disconnected');
   
   // Отписываемся от событий
@@ -310,6 +334,37 @@ const closeModal = () => {
 // Проверяем, подключен ли кошелек при монтировании компонента
 onMounted(async () => {
   try {
+    // Пытаемся восстановить кошелек из localStorage
+    const savedWallet = loadWalletFromStorage();
+    
+    if (savedWallet && savedWallet.address) {
+      // Проверяем, доступен ли MetaMask
+      if (checkIfMetaMaskIsInstalled()) {
+        // Проверяем, есть ли у нас доступ к аккаунту
+        // @ts-ignore
+        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        
+        // Проверяем, совпадает ли сохраненный аккаунт с текущим в MetaMask
+        if (accounts.includes(savedWallet.address)) {
+          walletAddress.value = savedWallet.address;
+          walletBalance.value = await getAccountBalance(savedWallet.address);
+          selectedProvider.value = savedWallet.provider;
+          await fetchAvailableAccounts();
+          step.value = 'connected';
+          emit('wallet-connected', savedWallet.address);
+          
+          // Подписка на изменение аккаунтов
+          // @ts-ignore
+          window.ethereum.on('accountsChanged', handleAccountsChanged);
+          return;
+        }
+      }
+      
+      // Если не удалось восстановить кошелек из localStorage, удаляем сохраненные данные
+      removeWalletFromStorage();
+    }
+    
+    // Стандартная проверка
     if (checkIfMetaMaskIsInstalled()) {
       // @ts-ignore
       const accounts = await window.ethereum.request({ method: 'eth_accounts' });

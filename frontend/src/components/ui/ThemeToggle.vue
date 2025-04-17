@@ -1,7 +1,15 @@
 <template>
-  <button class="text-gray-600 hover:text-blue-600" @click="$emit('click')">
-    <font-awesome-icon v-if="!isDarkMode" :icon="['far', 'moon']" />
-    <font-awesome-icon v-else :icon="['far', 'sun']" />
+  <button 
+    class="w-10 h-10 rounded-full flex items-center justify-center focus:outline-none transition-colors" 
+    :class="[
+      isDarkMode 
+        ? 'bg-gray-700 text-yellow-300 hover:bg-gray-600' 
+        : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+    ]"
+    @click="$emit('click')"
+    aria-label="Toggle dark mode"
+  >
+    <font-awesome-icon :icon="isDarkMode ? 'sun' : 'moon'" class="text-lg" />
   </button>
 </template>
 

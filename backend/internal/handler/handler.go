@@ -9,9 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
+	"github.com/polonkoevv/ethcourse/internal/model"
 	"github.com/polonkoevv/ethcourse/internal/service"
 )
 
@@ -37,12 +39,60 @@ func (h *Handler) CreateRouter() *chi.Mux {
 	}))
 	r.Post("/upload", h.UploadFile)
 	r.Get("/music", h.GetAllMusic)
+	r.Get("/transactions", h.GetTransactionHistoryFromChain)
 	return r
 }
 
 func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	// Максимальный размер файла (32 МБ)
 	r.ParseMultipartForm(32 << 20)
+
+	// 1. Получение всех данных из формы
+	message := r.FormValue("message")
+	signature := r.FormValue("signature")
+	walletAddress := r.FormValue("walletAddress")
+	title := r.FormValue("title")
+	artist := r.FormValue("artist")
+
+	// Логирование полученных данных
+	fmt.Printf("Получено сообщение: %s\n", message)
+	fmt.Printf("Получена подпись: %s\n", signature)
+	fmt.Printf("Получен адрес кошелька: %s\n", walletAddress)
+
+	// 2. Проверка подписи
+	valid, recoveredAddress, err := h.service.VerifySignature(message, signature)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Ошибка проверки подписи: %s", err), http.StatusBadRequest)
+		return
+	}
+
+	// Проверяем, что адрес, полученный из подписи, совпадает с адресом отправителя
+	if !valid || !strings.EqualFold(recoveredAddress, walletAddress) {
+		http.Error(w, "Недействительная подпись или адрес не совпадает", http.StatusUnauthorized)
+		return
+	}
+
+	// 3. Парсинг содержимого сообщения
+	var messageData struct {
+		Action    string `json:"action"`
+		Title     string `json:"title"`
+		Artist    string `json:"artist"`
+		Filename  string `json:"filename"`
+		Filesize  int64  `json:"filesize"`
+		Timestamp int64  `json:"timestamp"`
+		Wallet    string `json:"wallet"`
+	}
+
+	if err := json.Unmarshal([]byte(message), &messageData); err != nil {
+		http.Error(w, fmt.Sprintf("Ошибка парсинга сообщения: %s", err), http.StatusBadRequest)
+		return
+	}
+
+	// Проверка, что сообщение содержит загрузку аудио
+	if messageData.Action != "audio_upload" {
+		http.Error(w, "Неверный тип действия в сообщении", http.StatusBadRequest)
+		return
+	}
 
 	// Получение файла из формы
 	file, handler, err := r.FormFile("file")
@@ -112,7 +162,7 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("Загружен аудиофайл: %s, тип: %s\n", handler.Filename, fileType)
 
-	// Временное сохранение файла
+	// 4. Временное сохранение файла
 	tempFilePath := filepath.Join(os.TempDir(), handler.Filename)
 	tempFile, err := os.Create(tempFilePath)
 	if err != nil {
@@ -120,6 +170,7 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tempFile.Close()
+	defer os.Remove(tempFilePath) // Удаляем временный файл после обработки
 
 	_, err = io.Copy(tempFile, file)
 	if err != nil {
@@ -127,15 +178,38 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Добавление файла в IPFS
+	// 5. Добавление файла в IPFS
 	tempFile.Seek(0, 0)
-	cid, err := h.service.UploadFile(context.Background(), handler.Filename, tempFile)
+	cid, err := h.service.UploadFile(context.Background(), handler.Filename, tempFile, walletAddress, signature, time.Now())
 	if err != nil {
 		http.Error(w, "Ошибка добавления в IPFS: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	fmt.Fprintf(w, "Файл успешно загружен в IPFS с CID: %s", cid)
+	// 6. Сохранение информации о файле в базе данных
+	audioID, err := h.service.SaveAudioMetadata(context.Background(), &model.Audio{
+		Title:      title,
+		Artist:     artist,
+		IPFSCID:    cid,
+		OwnerAddr:  walletAddress,
+		Signature:  signature,
+		UploadedAt: time.Now(),
+	})
+	if err != nil {
+		http.Error(w, "Ошибка сохранения метаданных: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// 7. Возвращаем успешный ответ
+	response := map[string]interface{}{
+		"success": true,
+		"message": "Файл успешно загружен",
+		"cid":     cid,
+		"audioId": audioID,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 func (h *Handler) GetAllMusic(w http.ResponseWriter, r *http.Request) {
@@ -146,4 +220,16 @@ func (h *Handler) GetAllMusic(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(music)
+}
+
+func (h *Handler) GetTransactionHistoryFromChain(w http.ResponseWriter, r *http.Request) {
+	address := r.URL.Query().Get("address")
+
+	transactions, err := h.service.GetTransactionHistoryFromChain(address, 0, 5, "http://127.0.0.1:7545")
+	if err != nil {
+		http.Error(w, "Ошибка получения транзакций: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(transactions)
 }

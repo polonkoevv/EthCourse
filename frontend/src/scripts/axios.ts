@@ -25,8 +25,12 @@ class AxiosEntity {
     formData.append('title', trackTitle);
     return this.api.post(baseURL + '/upload', formData);
   }
-  
-  
+
+  async GetTransactionHistoryFromChain(address: string) {
+    return this.api.get(baseURL + '/transactions', {
+      params: { address},
+    });
+  }
 }
 
 export default new AxiosEntity();

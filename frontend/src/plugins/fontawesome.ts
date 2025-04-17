@@ -19,14 +19,14 @@ import {
   faWallet,
   faArrowRight,
   faCheck,
-  faArrowLeft
+  faArrowLeft,
+  faMoon, faSun
 } from '@fortawesome/free-solid-svg-icons';
 
 // Иконки из regular набора
-import { faMoon, faSun } from '@fortawesome/free-regular-svg-icons';
 
 // Иконки из brands набора
-import { faTwitter, faDiscord, faGithub } from '@fortawesome/free-brands-svg-icons';
+import { faTelegram, faLinkedin, faGithub } from '@fortawesome/free-brands-svg-icons';
 
 // Добавляем иконки в библиотеку
 library.add(
@@ -54,8 +54,8 @@ library.add(
   faSun,
   
   // Brands
-  faTwitter, 
-  faDiscord, 
+  faTelegram, 
+  faLinkedin,
   faGithub
 );
 

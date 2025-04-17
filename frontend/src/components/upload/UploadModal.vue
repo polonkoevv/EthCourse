@@ -72,6 +72,22 @@
               >
             </div>
           </div>
+
+          <!-- Статус публикации -->
+          <div v-if="publishingStatus" class="mt-4">
+            <div v-if="publishingStatus === 'pending'" class="text-blue-600">
+              <font-awesome-icon icon="spinner" spin class="mr-2" />
+              {{ publishingStatusMessage }}
+            </div>
+            <div v-else-if="publishingStatus === 'success'" class="text-green-600">
+              <font-awesome-icon icon="check-circle" class="mr-2" />
+              {{ publishingStatusMessage }}
+            </div>
+            <div v-else-if="publishingStatus === 'error'" class="text-red-600">
+              <font-awesome-icon icon="exclamation-circle" class="mr-2" />
+              {{ publishingStatusMessage }}
+            </div>
+          </div>
         </div>
 
         <div class="p-6 border-t border-neutral-100 flex justify-end space-x-4">
@@ -96,9 +112,19 @@
 </template>
 
 <script setup lang="ts">
+
+declare global {
+  interface Window {
+    ethereum: any;
+  }
+}
+
 import { ref, computed, watch } from 'vue';
 import type { Audio } from '../../types/audio';
 import AxiosEntity from '../../scripts/axios';
+import { ethers } from 'ethers';
+import AudioChainABI from '../../../build/contracts/AudioChain.json';
+
 const props = defineProps<{
   isOpen: boolean
 }>();
@@ -115,6 +141,50 @@ const uploadProgress = ref(0);
 const trackTitle = ref('');
 const artistName = ref('');
 const description = ref('');
+const price = ref('');
+
+// Добавляем переменные для взаимодействия с Web3
+const contractAddress = ref(''); // Адрес смарт-контракта в Ganache
+const provider = ref(null);
+const signer = ref(null);
+const contract = ref(null);
+const transactionHash = ref('');
+const publishingStatus = ref('');
+const publishingStatusMessage = ref('');
+
+const isWalletModalOpen = ref(false);
+const isWalletConnected = ref(false);
+const walletAddress = ref('');
+
+const GetCurrentWallet = async () => {
+  try {
+    // Проверяем, доступен ли объект ethereum в окне браузера
+    if (window.ethereum) {
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      
+      // Запрашиваем доступ к аккаунтам
+      const accounts = await provider.send('eth_requestAccounts', []);
+      
+      if (accounts.length > 0) {
+        const address = accounts[0];
+        console.log(accounts);
+        isWalletConnected.value = true;
+        walletAddress.value = address;
+        return address;
+      } else {
+        isWalletConnected.value = false;
+        walletAddress.value = '';
+        return null;
+      }
+    } else {
+      console.log('MetaMask не установлен');
+      return null;
+    }
+  } catch (error) {
+    console.error('Ошибка при получении кошелька:', error);
+    return null;
+  }
+}
 
 // Вычисляемые свойства
 const canUpload = computed(() => {
@@ -133,6 +203,7 @@ const resetForm = () => {
   trackTitle.value = '';
   artistName.value = '';
   description.value = '';
+  price.value = '';
   isDragging.value = false;
 };
 
@@ -173,47 +244,135 @@ const onFileSelected = (event: Event) => {
   }
 };
 
+// Инициализация Web3 и контракта
+const initWeb3 = async () => {
+  try {
+    // Проверяем наличие MetaMask
+    if (window.ethereum) {
+      provider.value = new ethers.providers.Web3Provider(window.ethereum);
+      await provider.value.send("eth_requestAccounts", []);
+      signer.value = provider.value.getSigner();
+      
+      // Инициализация контракта
+      contract.value = new ethers.Contract(
+        contractAddress.value,
+        AudioChainABI.abi,
+        signer.value
+      );
+      
+      return true;
+    } else {
+      console.error('MetaMask не установлен');
+      return false;
+    }
+  } catch (error) {
+    console.error('Ошибка инициализации Web3:', error);
+    return false;
+  }
+};
+
+// Модифицируем функцию загрузки файла
 const uploadFile = async () => {
   if (!selectedFile.value || !canUpload.value) return;
   
   try {
-    // Имитация загрузки с прогрессом
-    for (let i = 0; i <= 100; i += 5) {
-      uploadProgress.value = i;
-      await new Promise(resolve => setTimeout(resolve, 100));
+    // Получаем адрес текущего кошелька
+    const walletAddress = await GetCurrentWallet();
+    if (!walletAddress) {
+      publishingStatus.value = 'error';
+      publishingStatusMessage.value = 'Не удалось подключиться к кошельку';
+      return;
     }
     
-    // В реальном приложении здесь был бы код загрузки на сервер
-    // const formData = new FormData();
-    // formData.append('file', selectedFile.value);
-    // formData.append('title', trackTitle.value);
-    // formData.append('artist', artistName.value);
-    // formData.append('description', description.value);
-    // const response = await axios.post('/api/upload', formData);
-
-    const response = await AxiosEntity.UploadMusic(selectedFile.value, trackTitle.value);
-    console.log(response.data);
-
-    // Создаем объект URL для аудиофайла (в реальном приложении это был бы URL с сервера)
-    const audioURL = URL.createObjectURL(selectedFile.value);
-    
-    // Создаем новый объект аудио
-    const newAudio: Audio = {
+    // Создаем сообщение для подписи
+    const messageToSign = JSON.stringify({
+      action: 'audio_upload',
       title: trackTitle.value,
-      gradient: 'from-green-400 to-emerald-300',
-      link: audioURL,
-      id: 0,
-      cid: ""
-    };
+      artist: artistName.value || 'Unknown',
+      filename: selectedFile.value.name,
+      filesize: selectedFile.value.size,
+      timestamp: Date.now(),
+      wallet: walletAddress
+    });
     
-    // Отправляем событие об успешной загрузке
-    emit('upload-success', newAudio);
+    // Подписываем сообщение
+    publishingStatus.value = 'pending';
+    publishingStatusMessage.value = 'Подписываем сообщение...';
     
-    // Закрываем модальное окно
-    closeModal();
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const signer = provider.getSigner();
+    const signature = await signer.signMessage(messageToSign);
+    
+    console.log('Подписанное сообщение:', signature);
+    
+    // Загрузка файла в IPFS
+    uploadProgress.value = 0;
+    publishingStatus.value = 'pending';
+    publishingStatusMessage.value = 'Загрузка файла...';
+    
+    // Реальная загрузка файла на сервер с подписью
+    const formData = new FormData();
+    formData.append('file', selectedFile.value);
+    formData.append('title', trackTitle.value);
+    formData.append('artist', artistName.value || 'Unknown');
+    formData.append('message', messageToSign);
+    formData.append('signature', signature);
+    formData.append('walletAddress', walletAddress);
+    
+    // Имитация прогресса загрузки
+    const uploadInterval = setInterval(() => {
+      if (uploadProgress.value < 95) {
+        uploadProgress.value += 5;
+      }
+    }, 200);
+    
+    try {
+      const response = await fetch('http://localhost:8000/upload', {
+        method: 'POST',
+        body: formData
+      });
+      
+      clearInterval(uploadInterval);
+      uploadProgress.value = 100;
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.message || 'Ошибка загрузки файла');
+      }
+      
+      const ipfsHash = data.cid;
+      
+      // Успешная загрузка
+      publishingStatus.value = 'success';
+      publishingStatusMessage.value = 'Файл успешно загружен!';
+      
+      // Отправляем событие об успешной загрузке
+      emit('upload-success', {
+        id: data.audioId || Date.now(),
+        title: trackTitle.value,
+        artist: artistName.value || 'Unknown',
+        ipfsHash,
+        signature,
+        walletAddress
+      });
+      
+      // Закрываем модальное окно
+      setTimeout(() => {
+        closeModal();
+      }, 2000);
+      
+    } catch (error) {
+      clearInterval(uploadInterval);
+      console.error('Ошибка загрузки:', error);
+      publishingStatus.value = 'error';
+      publishingStatusMessage.value = `Ошибка загрузки: ${error.message}`;
+    }
+    
   } catch (error) {
-    console.error('Ошибка загрузки:', error);
-    alert('Произошла ошибка при загрузке файла');
+    console.error('Ошибка:', error);
+    publishingStatus.value = 'error';
+    publishingStatusMessage.value = `Ошибка: ${error.message}`;
   }
 };
 
